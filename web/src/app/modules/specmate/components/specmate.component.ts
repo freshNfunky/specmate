@@ -1,6 +1,5 @@
 import { Component } from '@angular/core';
 import { ViewControllerService } from '../../views/controller/modules/view-controller/services/view-controller.service';
-import { ErrorNotificationModalService } from '../../notification/modules/modals/services/error-notification-modal.service';
 import { AuthenticationService } from '../../views/main/authentication/modules/auth/services/authentication.service';
 
 /**
@@ -47,7 +46,7 @@ export class SpecmateComponent {
     }
 
     public get rightShown(): boolean {
-        return this.propertiesShown || this.linksActionsShown || this.tracingLinksShown;
+        return this.propertiesShown || this.linksActionsShown || this.tracingLinksShown || this.historyShown;
     }
 
     public get leftShown(): boolean {

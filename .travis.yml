@@ -6,6 +6,10 @@ node_js:
 - '7'
 jdk:
 - oraclejdk8
+addons:
+  apt:
+    packages:
+      - oracle-java8-installer
 env:
 - TERM=dumb
 install:
@@ -13,9 +17,9 @@ install:
 - cd ../bundles && ./gradlew --version
 script:
 - cd ../web && npm run build-prod
-- cd ../bundles && ./gradlew build --continue
-- cd ../bundles && ./gradlew check
-- cd ../bundles && ./gradlew export
+- cd ../bundles && ./gradlew --no-daemon build --continue
+- cd ../bundles && ./gradlew --no-daemon check
+- cd ../bundles && ./gradlew --no-daemon export
 - cd ..
 after_success:
 - git status

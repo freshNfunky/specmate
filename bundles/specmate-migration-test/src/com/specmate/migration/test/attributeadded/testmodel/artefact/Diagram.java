@@ -4,7 +4,9 @@ package com.specmate.migration.test.attributeadded.testmodel.artefact;
 
 import com.specmate.migration.test.attributeadded.testmodel.base.IContainer;
 import com.specmate.migration.test.attributeadded.testmodel.base.IModifiable;
+
 import java.util.Date;
+import org.eclipse.emf.common.util.EList;
 
 /**
  * <!-- begin-user-doc -->
@@ -16,6 +18,7 @@ import java.util.Date;
  * </p>
  * <ul>
  *   <li>{@link com.specmate.migration.test.attributeadded.testmodel.artefact.Diagram#getCreated <em>Created</em>}</li>
+ *   <li>{@link com.specmate.migration.test.attributeadded.testmodel.artefact.Diagram#getNotes <em>Notes</em>}</li>
  * </ul>
  *
  * @see com.specmate.migration.test.attributeadded.testmodel.artefact.ArtefactPackage#getDiagram()
@@ -23,7 +26,6 @@ import java.util.Date;
  * @generated
  */
 public interface Diagram extends IModifiable, IContainer {
-
 	/**
 	 * Returns the value of the '<em><b>Created</b></em>' attribute.
 	 * <!-- begin-user-doc -->
@@ -49,4 +51,21 @@ public interface Diagram extends IModifiable, IContainer {
 	 * @generated
 	 */
 	void setCreated(Date value);
+
+	/**
+	 * Returns the value of the '<em><b>Notes</b></em>' attribute list.
+	 * The list contents are of type {@link java.lang.String}.
+	 * <!-- begin-user-doc -->
+	 * <p>
+	 * If the meaning of the '<em>Notes</em>' attribute list isn't clear,
+	 * there really should be more of a description here...
+	 * </p>
+	 * <!-- end-user-doc -->
+	 * @return the value of the '<em>Notes</em>' attribute list.
+	 * @see com.specmate.migration.test.attributeadded.testmodel.artefact.ArtefactPackage#getDiagram_Notes()
+	 * @model unique="false"
+	 * @generated
+	 */
+	EList<String> getNotes();
+
 } // Diagram

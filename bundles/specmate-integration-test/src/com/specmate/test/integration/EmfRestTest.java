@@ -2,8 +2,6 @@ package com.specmate.test.integration;
 
 import static org.junit.Assert.assertNotNull;
 
-import java.util.Dictionary;
-import java.util.Hashtable;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -11,15 +9,10 @@ import javax.ws.rs.core.Response.Status;
 
 import org.json.JSONObject;
 import org.junit.Assert;
-import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.log.LogService;
 import org.osgi.util.tracker.ServiceTracker;
 
 import com.specmate.auth.api.IAuthenticationService;
-import com.specmate.auth.config.AuthenticationServiceConfig;
-import com.specmate.auth.config.SessionServiceConfig;
-import com.specmate.common.OSGiUtil;
-import com.specmate.common.SpecmateException;
 import com.specmate.connectors.api.IProjectService;
 import com.specmate.emfjson.EMFJsonSerializer;
 import com.specmate.model.base.BasePackage;
@@ -44,6 +37,7 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 	static IProjectService projectService;
 
 	private static int counter = 0;
+	private static boolean firstTestRun = true;
 
 	public EmfRestTest() throws Exception {
 		super();
@@ -58,14 +52,18 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 			projectService = getProjectService();
 		}
 		if (authenticationService == null) {
-			configureSessionService();
-			configureAuthenticationService();
 			authenticationService = getAuthenticationService();
 			UserSession session = authenticationService.authenticate("resttest", "resttest");
 
 			if (restClient == null) {
 				restClient = new RestClient(REST_ENDPOINT, session.getId(), logService);
 			}
+		}
+
+		// Give all services some time to startup before running the first test
+		if (firstTestRun) {
+			Thread.sleep(5000);
+			firstTestRun = false;
 		}
 	}
 
@@ -76,20 +74,6 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 		LogService logService = logTracker.waitForService(10000);
 		Assert.assertNotNull(logService);
 		return logService;
-	}
-
-	private void configureSessionService() throws SpecmateException {
-		ConfigurationAdmin configAdmin = getConfigAdmin();
-		Dictionary<String, Object> properties = new Hashtable<>();
-		properties.put(SessionServiceConfig.SESSION_MAX_IDLE_MINUTES, 5);
-		OSGiUtil.configureService(configAdmin, SessionServiceConfig.PID, properties);
-	}
-
-	private void configureAuthenticationService() throws SpecmateException {
-		ConfigurationAdmin configAdmin = getConfigAdmin();
-		Dictionary<String, Object> properties = new Hashtable<>();
-		properties.put(AuthenticationServiceConfig.SESSION_PERSISTENT, false);
-		OSGiUtil.configureService(configAdmin, AuthenticationServiceConfig.PID, properties);
 	}
 
 	private IAuthenticationService getAuthenticationService() throws InterruptedException {
@@ -173,17 +157,23 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 		process.put(BasePackage.Literals.INAMED__NAME.getName(), processName);
 		return process;
 	}
-
+	
 	protected JSONObject createTestCegNode() {
+		String variable = "Variable" + counter++;
+		String condition ="Condition" + counter++;
+		return createTestCegNode(variable,condition,NodeType.OR.getLiteral());
+	}
+
+	protected JSONObject createTestCegNode(String variable, String condition, String operation) {
 		String cegName = "TestCegNode" + counter++;
 		JSONObject cegNode = new JSONObject();
 		cegNode.put(NSURI_KEY, RequirementsPackage.eNS_URI);
 		cegNode.put(ECLASS, RequirementsPackage.Literals.CEG_NODE.getName());
 		cegNode.put(BasePackage.Literals.IID__ID.getName(), cegName);
 		cegNode.put(BasePackage.Literals.INAMED__NAME.getName(), cegName);
-		cegNode.put(RequirementsPackage.Literals.CEG_NODE__VARIABLE.getName(), cegName);
-		cegNode.put(RequirementsPackage.Literals.CEG_NODE__CONDITION.getName(), "5");
-		cegNode.put(RequirementsPackage.Literals.CEG_NODE__TYPE.getName(), NodeType.OR.getLiteral());
+		cegNode.put(RequirementsPackage.Literals.CEG_NODE__VARIABLE.getName(), variable);
+		cegNode.put(RequirementsPackage.Literals.CEG_NODE__CONDITION.getName(), condition);
+		cegNode.put(RequirementsPackage.Literals.CEG_NODE__TYPE.getName(), operation);
 		return cegNode;
 	}
 
@@ -233,6 +223,7 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 		connection.put(NSURI_KEY, RequirementsPackage.eNS_URI);
 		connection.put(ECLASS, RequirementsPackage.Literals.CEG_CONNECTION.getName());
 		connection.put(BasePackage.Literals.IID__ID.getName(), connectionName);
+		connection.put(BasePackage.Literals.INAMED__NAME.getName(), connectionName);
 		connection.put(BasePackage.Literals.IMODEL_CONNECTION__SOURCE.getName(), EmfRestTestUtil.proxy(node1));
 		connection.put(BasePackage.Literals.IMODEL_CONNECTION__TARGET.getName(), EmfRestTestUtil.proxy(node2));
 		connection.put(RequirementsPackage.Literals.CEG_CONNECTION__NEGATE.getName(), isNegated);
@@ -245,6 +236,7 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 		connection.put(NSURI_KEY, ProcessesPackage.eNS_URI);
 		connection.put(ECLASS, ProcessesPackage.Literals.PROCESS_CONNECTION.getName());
 		connection.put(BasePackage.Literals.IID__ID.getName(), connectionName);
+		connection.put(BasePackage.Literals.INAMED__NAME.getName(), connectionName);
 		connection.put(BasePackage.Literals.IMODEL_CONNECTION__SOURCE.getName(), EmfRestTestUtil.proxy(node1));
 		connection.put(BasePackage.Literals.IMODEL_CONNECTION__TARGET.getName(), EmfRestTestUtil.proxy(node2));
 		return connection;
@@ -256,6 +248,7 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 		connection.put(NSURI_KEY, ProcessesPackage.eNS_URI);
 		connection.put(ECLASS, ProcessesPackage.Literals.PROCESS_CONNECTION.getName());
 		connection.put(BasePackage.Literals.IID__ID.getName(), connectionName);
+		connection.put(BasePackage.Literals.INAMED__NAME.getName(), connectionName);
 		connection.put(BasePackage.Literals.IMODEL_CONNECTION__SOURCE.getName(), EmfRestTestUtil.proxy(node1));
 		connection.put(BasePackage.Literals.IMODEL_CONNECTION__TARGET.getName(), EmfRestTestUtil.proxy(node2));
 		connection.put(ProcessesPackage.Literals.PROCESS_CONNECTION__CONDITION.getName(), "condition" + counter++);
@@ -375,6 +368,8 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 		try {
 			Thread.sleep(200);
 		} catch (InterruptedException e) {
+		} finally {
+			result.getResponse().close();
 		}
 		return object;
 	}
@@ -388,6 +383,7 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 		logService.log(LogService.LOG_DEBUG, "Updateing the object " + object.toString() + " at url " + updateUrl);
 		RestResult<JSONObject> putResult = restClient.put(updateUrl, object);
 		Assert.assertEquals(statusCode, putResult.getResponse().getStatus());
+		putResult.getResponse().close();
 	}
 
 	protected JSONObject getObject(int statusCode, String... segments) {
@@ -405,6 +401,7 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 			logService.log(LogService.LOG_DEBUG, "Empty result from url " + url);
 		}
 		Assert.assertEquals(statusCode, getResult.getResponse().getStatus());
+		getResult.getResponse().close();
 		return retrievedObject;
 	}
 
@@ -418,6 +415,7 @@ public abstract class EmfRestTest extends IntegrationTestBase {
 		logService.log(LogService.LOG_DEBUG, "Deleting object with URL " + deleteUrl);
 		RestResult<Object> deleteResult = restClient.delete(deleteUrl);
 		Assert.assertEquals(Status.OK.getStatusCode(), deleteResult.getResponse().getStatus());
+		deleteResult.getResponse().close();
 	}
 
 	protected String listUrl(String... segments) {

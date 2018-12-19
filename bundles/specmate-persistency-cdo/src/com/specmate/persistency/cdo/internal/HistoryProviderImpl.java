@@ -13,20 +13,31 @@ import org.eclipse.emf.cdo.common.id.CDOID;
 import org.eclipse.emf.common.util.ECollections;
 import org.eclipse.emf.common.util.TreeIterator;
 import org.eclipse.emf.ecore.EObject;
-import org.eclipse.emf.ecore.EReference;
 import org.eclipse.emf.ecore.EStructuralFeature;
 import org.osgi.service.component.annotations.Component;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.log.LogService;
 
 import com.specmate.common.SpecmateException;
+import com.specmate.common.SpecmateValidationException;
+import com.specmate.model.base.BasePackage;
+import com.specmate.model.base.INamed;
 import com.specmate.model.history.Change;
 import com.specmate.model.history.History;
 import com.specmate.model.history.HistoryEntry;
 import com.specmate.model.history.HistoryFactory;
+import com.specmate.model.requirements.RequirementsPackage;
 import com.specmate.persistency.IHistoryProvider;
+import com.specmate.persistency.IPersistencyService;
+import com.specmate.persistency.ITransaction;
 import com.specmate.persistency.event.EChangeKind;
 
 @Component(immediate = true)
 public class HistoryProviderImpl implements IHistoryProvider {
+
+	private IPersistencyService persistency;
+
+	private LogService logService;
 
 	@Override
 	public History getHistory(EObject object) throws SpecmateException {
@@ -36,7 +47,22 @@ public class HistoryProviderImpl implements IHistoryProvider {
 	}
 
 	@Override
-	public History getHistoryRecursive(EObject object) throws SpecmateException {
+	public History getContainerHistory(EObject object) throws SpecmateException {
+		History history = getHistory(object);
+
+		List<EObject> contents = object.eContents();
+		for (EObject content : contents) {
+			CDOObject cdoObject = (CDOObject) content;
+			processHistory(cdoObject, history);
+		}
+
+		sortHistory(history, false);
+
+		return history;
+	}
+
+	@Override
+	public History getRecursiveHistory(EObject object) throws SpecmateException {
 		History history = getHistory(object);
 
 		// Get all contents recursively
@@ -47,29 +73,29 @@ public class HistoryProviderImpl implements IHistoryProvider {
 		// The current solution is to check changed elements if the change kind is
 		// "REMOVED".
 		// This will however also mark moved elements as deleted.
+
 		TreeIterator<EObject> it = object.eAllContents();
 		while (it.hasNext()) {
 			CDOObject cdoObject = (CDOObject) it.next();
-			history = processHistory(cdoObject, history);
+			processHistory(cdoObject, history);
 		}
 
-		// sort by date (new to old)
+		sortHistory(history, false);
+
+		return history;
+	}
+
+	private void sortHistory(History history, boolean ascending) {
 		ECollections.sort(history.getEntries(), new Comparator<HistoryEntry>() {
 			@Override
 			public int compare(HistoryEntry o1, HistoryEntry o2) {
-				if (o1.getTimestamp() < o2.getTimestamp()) {
-					return 1;
+				if (ascending) {
+					return (int) ((int) o1.getTimestamp() - o2.getTimestamp());
 				}
 
-				if (o1.getTimestamp() > o2.getTimestamp()) {
-					return -1;
-				}
-
-				return 0;
+				return (int) (o2.getTimestamp() - o1.getTimestamp());
 			}
 		});
-
-		return history;
 	}
 
 	private History processHistory(CDOObject cdoObject, History history) {
@@ -79,29 +105,34 @@ public class HistoryProviderImpl implements IHistoryProvider {
 			HistoryEntry historyEntry = HistoryFactory.eINSTANCE.createHistoryEntry();
 
 			fillHistoryEntry(cdoObject, cdoHistoryElement, historyEntry);
-			if (!historyEntry.getChanges().isEmpty()) {
+			if (!historyEntry.getChanges().isEmpty() || !historyEntry.getDeletedObjects().isEmpty()) {
 				history.getEntries().add(historyEntry);
 			}
+
 		}
 		return history;
 	}
 
 	private void fillHistoryEntry(CDOObject cdoObject, CDOCommitInfo cdoHistoryElement, HistoryEntry historyEntry) {
 		HistoryDeltaProcessor deltaProcessor = new HistoryDeltaProcessor(cdoHistoryElement, cdoObject.cdoID());
-		deltaProcessor.process();
+		try {
+			deltaProcessor.process();
+		} catch (SpecmateValidationException e) {
+			logService.log(LogService.LOG_ERROR, e.getMessage());
+		}
 		historyEntry.getChanges().addAll(deltaProcessor.getChanges());
 		historyEntry.setTimestamp(cdoHistoryElement.getTimeStamp());
-		extractUserInfo(cdoHistoryElement, historyEntry);
+		extractCommentInfo(cdoHistoryElement, historyEntry);
 
 	}
 
-	private void extractUserInfo(CDOCommitInfo cdoHistoryElement, HistoryEntry historyEntry) {
+	private void extractCommentInfo(CDOCommitInfo cdoHistoryElement, HistoryEntry historyEntry) {
 		String comment = cdoHistoryElement.getComment();
 		if (comment == null || comment.length() == 0) {
 			return;
 		}
 
-		String[] info = comment.split(";", 2);
+		String[] info = comment.split(ITransaction.COMMENT_RECORD_SEPARATOR);
 		if (info.length == 0) {
 			return;
 		}
@@ -109,7 +140,14 @@ public class HistoryProviderImpl implements IHistoryProvider {
 		historyEntry.setUser(info[0]);
 
 		if (info.length == 2) {
-			historyEntry.setComment(info[1]);
+			String[] deletedObjects = info[1].split(ITransaction.COMMENT_FIELD_SEPARATOR);
+			for (int i = 0; i < deletedObjects.length; i++) {
+				historyEntry.getDeletedObjects().add(deletedObjects[i]);
+			}
+		}
+
+		if (info.length == 3) {
+			historyEntry.setComment(info[2]);
 		}
 	}
 
@@ -146,61 +184,103 @@ public class HistoryProviderImpl implements IHistoryProvider {
 
 		@Override
 		protected void changedObject(CDOID id, EStructuralFeature feature, EChangeKind changeKind, Object oldValue,
-				Object newValue, int index) {
+				Object newValue, int index, String objectClassName) throws SpecmateValidationException {
+
 			if (!id.equals(this.cdoId)) {
 				return;
 			}
 
-			Change change = HistoryFactory.eINSTANCE.createChange();
-			change.setFeature(feature.getName());
+			if (showChange(feature, changeKind)) {
+				String objectName = getObjectName(id);
+				if (objectName != null) {
+					Change change = HistoryFactory.eINSTANCE.createChange();
 
-			if (feature instanceof EReference) {
-				EReference ref = (EReference) feature;
-				if (ref.isContainment() && changeKind.equals(EChangeKind.REMOVE)) {
-					change.setIsDelete(true);
-					change.setNewValue(oldValue.toString());
-				} else if (ref.isContainment() && changeKind.equals(EChangeKind.ADD)) {
-					change.setIsCreate(true);
-					change.setNewValue(newValue.toString());
-				} else {
-					return;
+					if (newValue != null) {
+						change.setNewValue(newValue.toString());
+					}
+					if (oldValue != null) {
+						// For some reason, when this is retrieved by CDO, the object has no type
+						// information and lands here as a plain object which we cannot read as a
+						// string. Hence, for now, the clients should ignore these values.
+						change.setOldValue(oldValue.toString());
+					}
+
+					change.setObjectType(objectClassName);
+					change.setFeature(feature.getName());
+					change.setObjectName(objectName);
+					changes.add(change);
 				}
 			}
-
-			if (newValue != null) {
-				change.setNewValue(newValue.toString());
-			}
-
-			changes.add(change);
 		}
 
 		@Override
-		protected void newObject(CDOID id, String className, Map<EStructuralFeature, Object> featureMap) {
+		protected void newObject(CDOID id, String className, Map<EStructuralFeature, Object> featureMap)
+				throws SpecmateValidationException {
 			if (!id.equals(this.cdoId)) {
 				return;
 			}
 
 			featureMap.forEach((k, v) -> {
-				// we just create a new change if we also have something to display, i.e. value
-				if (v != null && v instanceof String) {
+				// For now, we are only interested in seeing the new objects' name in the
+				// history
+				if (k.getName().equals(BasePackage.Literals.INAMED__NAME.getName())) {
 					Change change = HistoryFactory.eINSTANCE.createChange();
 					change.setIsCreate(true);
 					change.setFeature(k.getName());
+					change.setObjectType(className);
 					change.setNewValue((String) v);
+					change.setObjectName((String) v);
 					changes.add(change);
 				}
 			});
 		}
 
 		@Override
-		protected void detachedObject(CDOID id, int version) {
-			if (!id.equals(this.cdoId)) {
-				return;
-			}
-			Change change = HistoryFactory.eINSTANCE.createChange();
-			change.setIsDelete(true);
-			changes.add(change);
+		protected void detachedObject(CDOID id, int version) throws SpecmateValidationException {
+			// Information about deleted object is stored in transaction commits
 		}
 
+		private boolean showChange(EStructuralFeature feature, EChangeKind changeKind) {
+			String featureName = feature.getName();
+			// For now, we are only interested in seeing changes in object names,
+			// descriptions, variables and conditions
+			return changeKind.equals(EChangeKind.SET)
+					&& (featureName.equals(BasePackage.Literals.INAMED__NAME.getName())
+							|| featureName.equals(BasePackage.Literals.IDESCRIBED__DESCRIPTION.getName())
+							|| featureName.equals(RequirementsPackage.Literals.CEG_NODE__VARIABLE.getName())
+							|| featureName.equals(RequirementsPackage.Literals.CEG_NODE__CONDITION.getName()));
+		}
+
+		private String getObjectName(CDOID id) {
+			ITransaction transaction = null;
+			String objectName = null;
+
+			try {
+				transaction = persistency.openTransaction();
+				CDOObject obj = ((TransactionImpl) transaction).getInternalTransaction().getObject(id);
+				if (obj != null && obj instanceof INamed) {
+					objectName = ((INamed) obj).getName();
+				}
+			} catch (SpecmateException e) {
+				logService.log(LogService.LOG_ERROR, "Could not create change object for " + id.toString(), e);
+			} finally {
+				if (transaction != null) {
+					transaction.close();
+				}
+			}
+
+			return objectName;
+		}
+
+	}
+
+	@Reference
+	public void setPersistencyService(IPersistencyService persistency) {
+		this.persistency = persistency;
+	}
+
+	@Reference
+	public void setLogService(LogService logService) {
+		this.logService = logService;
 	}
 }

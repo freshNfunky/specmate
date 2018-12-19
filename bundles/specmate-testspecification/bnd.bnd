@@ -17,5 +17,10 @@
 	org.sat4j.pb,\
 	specmate-emfrest-api;version=latest,\
 	specmate-rest;version=latest,\
-	org.dkpro.token-pos-tagging
-Private-Package: com.specmate.testspecification.internal.services
+	org.dkpro.token-pos-tagging,\
+	specmate-rest;version=latest
+	
+Private-Package: \
+	com.specmate.testspecification.internal.services,\
+	com.specmate.testspecification.internal.testskeleton
+

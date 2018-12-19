@@ -12,7 +12,6 @@ import org.json.JSONObject;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.util.tracker.ServiceTracker;
 
 import com.specmate.common.OSGiUtil;
@@ -34,7 +33,6 @@ public class SearchTest extends EmfRestTest {
 	}
 
 	private void configureSearch() throws SpecmateException, InterruptedException {
-		ConfigurationAdmin configAdmin = getConfigAdmin();
 		OSGiUtil.configureService(configAdmin, LuceneBasedSearchServiceConfig.PID, getSearchServiceProperties());
 
 		// allow for the search service to start
@@ -62,14 +60,17 @@ public class SearchTest extends EmfRestTest {
 		String searchUrl = buildUrl("search", project);
 		RestResult<JSONArray> result = restClient.getList(searchUrl, "query", query);
 		Assert.assertEquals(Status.OK.getStatusCode(), result.getResponse().getStatus());
+		result.getResponse().close();
 		JSONArray foundObjects = result.getPayload();
 		return foundObjects;
 	}
+	
 
 	private void performReindex() {
 		String reindexUrl = buildUrl("reindex");
 		RestResult<JSONObject> result = restClient.get(reindexUrl);
 		Assert.assertEquals(Status.NO_CONTENT.getStatusCode(), result.getResponse().getStatus());
+		result.getResponse().close();
 	}
 
 	private JSONArray queryRelatedRequirements(String... segments) {
@@ -77,6 +78,7 @@ public class SearchTest extends EmfRestTest {
 		RestResult<JSONArray> result = restClient.getList(relatedUrl);
 		Assert.assertEquals(Status.OK.getStatusCode(), result.getResponse().getStatus());
 		JSONArray foundObjects = result.getPayload();
+		result.getResponse().close();
 		return foundObjects;
 	}
 

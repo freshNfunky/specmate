@@ -9,7 +9,7 @@ export abstract class ElementFactoryBase<T extends IContainer> {
 
     constructor(protected dataService: SpecmateDataService) { }
 
-    public abstract create(parent: IContainer, commit: boolean, compoundId?: string): Promise<T>;
+    public abstract create(parent: IContainer, commit: boolean, compoundId?: string, name?: string): Promise<T>;
 
     protected loadContents(parent: IContainer): Promise<IContainer[]> {
         return this.dataService.readContents(parent.url, true).then((contents: IContainer[]) => this.contents = contents);
@@ -22,7 +22,7 @@ export abstract class ElementFactoryBase<T extends IContainer> {
     public static getDateStr(): string {
         const now = new Date();
         const year = ElementFactoryBase.fillPreceedingZeros(now.getFullYear(), 4);
-        const month = ElementFactoryBase.fillPreceedingZeros(now.getMonth(), 2);
+        const month = ElementFactoryBase.fillPreceedingZeros(now.getMonth() + 1, 2);
         const day = ElementFactoryBase.fillPreceedingZeros(now.getDate(), 2);
         const hour = ElementFactoryBase.fillPreceedingZeros(now.getHours(), 2);
         const minute = ElementFactoryBase.fillPreceedingZeros(now.getMinutes(), 2);

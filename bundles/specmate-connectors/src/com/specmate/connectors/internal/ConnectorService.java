@@ -5,7 +5,6 @@ import static com.specmate.connectors.internal.config.ConnectorServiceConfig.KEY
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
 
 import org.eclipse.emf.cdo.common.id.CDOWithID;
 import org.osgi.service.component.annotations.Activate;
@@ -23,9 +22,10 @@ import com.specmate.connectors.api.IRequirementsSource;
 import com.specmate.connectors.internal.config.ConnectorServiceConfig;
 import com.specmate.persistency.IPersistencyService;
 import com.specmate.persistency.ITransaction;
-
-import it.sauronsoftware.cron4j.Scheduler;
-import it.sauronsoftware.cron4j.SchedulingPattern;
+import com.specmate.scheduler.Scheduler;
+import com.specmate.scheduler.SchedulerIteratorFactory;
+import com.specmate.scheduler.SchedulerTask;
+import com.specmate.search.api.IModelSearchService;
 
 @Component(immediate = true, configurationPid = ConnectorServiceConfig.PID, configurationPolicy = ConfigurationPolicy.REQUIRE)
 public class ConnectorService {
@@ -33,40 +33,61 @@ public class ConnectorService {
 	List<IRequirementsSource> requirementsSources = new ArrayList<>();
 	private LogService logService;
 	private IPersistencyService persistencyService;
-	private ScheduledExecutorService scheduler;
+	private IModelSearchService modelSearchService;
 	private ITransaction transaction;
 
 	@Activate
 	public void activate(Map<String, Object> properties) throws SpecmateValidationException, SpecmateException {
 		validateConfig(properties);
-		
-		String cronStr = (String) properties.get(KEY_POLL_SCHEDULE);
-		if(cronStr == null) {
+
+		String schedule = (String) properties.get(KEY_POLL_SCHEDULE);
+		if (schedule == null) {
 			return;
 		}
-		
+
 		this.transaction = this.persistencyService.openTransaction();
-		Runnable connectorRunnable = new ConnectorJobRunnable(requirementsSources, transaction, logService);
-		
-		Scheduler scheduler = new Scheduler();
-		scheduler.schedule(cronStr, connectorRunnable);
-		scheduler.start();
+
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+
+				// Ensure that requirements source are loaded.
+				while (requirementsSources.size() == 0) {
+					try {
+						logService.log(LogService.LOG_INFO, "No requirement sources here yet. Waiting.");
+						// Requirements Sources could be added after the
+						// component is activated
+						Thread.sleep(20 * 1000);
+					} catch (InterruptedException e) {
+						logService.log(LogService.LOG_ERROR, e.getMessage());
+					}
+				}
+
+				try {
+					SchedulerTask connectorRunnable = new ConnectorTask(requirementsSources, transaction, logService);
+					connectorRunnable.run();
+					modelSearchService.startReIndex();
+					Scheduler scheduler = new Scheduler();
+					scheduler.schedule(connectorRunnable, SchedulerIteratorFactory.create(schedule));
+				} catch (SpecmateException e) {
+					e.printStackTrace();
+					logService.log(LogService.LOG_ERROR, e.getLocalizedMessage());
+				} catch (SpecmateValidationException e) {
+					e.printStackTrace();
+					logService.log(LogService.LOG_ERROR, e.getLocalizedMessage());
+				}
+			}
+		}, "connector-service-initializer").start();
+
 	}
 
 	private void validateConfig(Map<String, Object> properties) throws SpecmateValidationException {
-		String cronStr = (String) properties.get(KEY_POLL_SCHEDULE);
-		if(!SchedulingPattern.validate(cronStr)) {
-			String message = "Cron " + cronStr + " invalid!";
-			logService.log(LogService.LOG_ERROR, message);
-			throw new SpecmateValidationException(message);
-			
-		}
+		SchedulerIteratorFactory.validate((String) properties.get(KEY_POLL_SCHEDULE));
 		logService.log(LogService.LOG_DEBUG, "Connector service config validated.");
 	}
 
 	@Deactivate
 	public void deactivate() {
-		this.scheduler.shutdown();
 		transaction.close();
 	}
 
@@ -87,6 +108,11 @@ public class ConnectorService {
 	@Reference
 	public void setPersistency(IPersistencyService persistencyService) {
 		this.persistencyService = persistencyService;
+	}
+	
+	@Reference
+	public void setModelSearchService(IModelSearchService modelSearchService) {
+		this.modelSearchService = modelSearchService;
 	}
 
 	public void unsetPersistency(IPersistencyService persistencyService) {

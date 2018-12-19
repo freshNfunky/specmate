@@ -1,15 +1,30 @@
+import { Injectable } from '@angular/core';
+import { Config } from '../../../../../config/config';
+import { Folder } from '../../../../../model/Folder';
 import { IContainer } from '../../../../../model/IContainer';
 import { FieldMetaItem, MetaInfo } from '../../../../../model/meta/field-meta';
+import { Type } from '../../../../../util/type';
 import { ElementValidatorBase } from '../../../../../validation/element-validator-base';
-import { ValidationResult } from '../../../../../validation/validation-result';
-import { Injectable } from '@angular/core';
 import { RequiredFieldsValidator } from '../../../../../validation/required-fields-validator';
+import { ValidationResult } from '../../../../../validation/validation-result';
+import { SpecmateDataService } from '../../../../data/modules/data-service/services/specmate-data.service';
 import { NavigatorService } from '../../../../navigation/modules/navigator/services/navigator.service';
+import { ValidationCache } from '../util/validation-cache';
 
 @Injectable()
 export class ValidationService {
 
-    constructor(private navigator: NavigatorService) { }
+    private static DISABLED_CHILD_VALIDATION_TYPES: { className: string }[] = [Folder];
+    private validationCache: ValidationCache;
+
+    constructor(private navigator: NavigatorService, private dataService: SpecmateDataService) {
+        this.validationCache = new ValidationCache();
+        dataService.elementChanged.subscribe( (url: string) => this.validationCache.removeEntry.call(this.validationCache, url));
+    }
+
+    public findValidationResults( parentElement: IContainer, resultFilter?: (result: ValidationResult) => boolean) {
+        return this.validationCache.findValidationResults(parentElement, resultFilter);
+    }
 
     private static requiredFieldValidatorMap: {[className: string]: RequiredFieldsValidator};
 
@@ -20,11 +35,18 @@ export class ValidationService {
     }
 
     private validateElement(element: IContainer, contents: IContainer[] = []): ValidationResult[] {
+        let contURLs = contents.map(c => c.url);
+        if (this.validationCache.isCached(element.url, contURLs)) {
+            return this.validationCache.getEntry(element.url);
+        }
         const requiredFieldsResults: ValidationResult = this.getRequiredFieldsValidator(element).validate(element);
         const elementValidators = this.getElementValidators(element) || [];
         let elementResults: ValidationResult[] =
-            elementValidators.map((validator: ElementValidatorBase<IContainer>) => validator.validate(element, contents));
-        return elementResults.concat(requiredFieldsResults);
+            elementValidators.map((validator: ElementValidatorBase<IContainer>) => validator.validate(element, contents))
+                             .concat(requiredFieldsResults);
+
+        this.validationCache.addEntriesToCache(element.url, contURLs, elementResults);
+        return elementResults;
     }
 
     private validateAll(elements: IContainer[]): ValidationResult[] {
@@ -42,7 +64,11 @@ export class ValidationService {
     }
 
     public get currentValid(): boolean {
-        return this.isValid(this.navigator.currentElement, this.navigator.currentContents);
+        const currentElement = this.navigator.currentElement;
+        const ignoreContents = ValidationService.DISABLED_CHILD_VALIDATION_TYPES
+            .find(disabledType => Type.is(currentElement, disabledType)) !== undefined;
+        const contents = ignoreContents ? [] : this.navigator.currentContents;
+        return this.isValid(this.navigator.currentElement, contents);
     }
 
     public get currentInvalidElements(): IContainer[] {
@@ -59,7 +85,7 @@ export class ValidationService {
         if (!contents) {
             return true;
         }
-        return !contents.some((element: IContainer) => !this.isValid(element));
+        return contents.every((element: IContainer) => this.isValid(element));
     }
 
     private getRequiredFieldsValidator(element: IContainer): RequiredFieldsValidator {
