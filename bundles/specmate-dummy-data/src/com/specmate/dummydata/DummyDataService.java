@@ -75,23 +75,29 @@ public class DummyDataService {
 	private void fillDummyData() throws SpecmateException {
 		ITransaction transaction = this.persistencyService.openTransaction();
 		Resource resource = transaction.getResource();
-		EObject testProject1 = SpecmateEcoreUtil.getEObjectWithName(DummyProject.TEST_DATA_PROJECT,
+		Folder testProject1 = (Folder) SpecmateEcoreUtil.getEObjectWithName(DummyProject.TEST_DATA_PROJECT,
 				resource.getContents());
 
-		if (testProject1 == null) {
-			Folder testFolder = BaseFactory.eINSTANCE.createFolder();
-			testFolder.setId(DummyProject.TEST_DATA_PROJECT);
-			testFolder.setName(DummyProject.TEST_DATA_PROJECT);
-
-			loadMiniTrainingTestData(testFolder);
-			loadGenericTestData(testFolder);
-			loadUserStudyTestData(testFolder);
+		if (testProject1 == null
+				|| SpecmateEcoreUtil.pickInstancesOf(testProject1.getContents(), Requirement.class).isEmpty()) {
 
 			try {
 				transaction.doAndCommit(new IChange<Object>() {
 					@Override
 					public Object doChange() throws SpecmateException {
-						transaction.getResource().getContents().add(testFolder);
+						Folder projectFolder;
+						if (testProject1 == null) {
+							projectFolder = BaseFactory.eINSTANCE.createFolder();
+							projectFolder.setId(DummyProject.TEST_DATA_PROJECT);
+							projectFolder.setName(DummyProject.TEST_DATA_PROJECT);
+							transaction.getResource().getContents().add(projectFolder);
+						} else {
+							projectFolder = testProject1;
+						}
+
+						loadMiniTrainingTestData(testProject1);
+						loadGenericTestData(testProject1);
+						loadUserStudyTestData(testProject1);
 						return null;
 					}
 				});
@@ -130,18 +136,18 @@ public class DummyDataService {
 	}
 
 	private void loadGenericTestData(Folder testFolder) {
-		Folder libfolder1 = BaseFactory.eINSTANCE.createFolder();
-		libfolder1.setId("libfolder1");
-		libfolder1.setName("Lib Folder 1");
-		libfolder1.setLibrary(true);
-		Folder libfolder2 = BaseFactory.eINSTANCE.createFolder();
-		libfolder2.setId("libfolder2");
-		libfolder2.setName("Lib Folder 2");
-		libfolder2.setLibrary(true);
-		Folder libfolder3 = BaseFactory.eINSTANCE.createFolder();
-		libfolder3.setId("libfolder3");
-		libfolder3.setName("Lib Folder 3");
-		libfolder3.setLibrary(true);
+		// Folder libfolder1 = BaseFactory.eINSTANCE.createFolder();
+		// libfolder1.setId("libfolder1");
+		// libfolder1.setName("Lib Folder 1");
+		// libfolder1.setLibrary(true);
+		// Folder libfolder2 = BaseFactory.eINSTANCE.createFolder();
+		// libfolder2.setId("libfolder2");
+		// libfolder2.setName("Lib Folder 2");
+		// libfolder2.setLibrary(true);
+		// Folder libfolder3 = BaseFactory.eINSTANCE.createFolder();
+		// libfolder3.setId("libfolder3");
+		// libfolder3.setName("Lib Folder 3");
+		// libfolder3.setLibrary(true);
 
 		Folder folder1 = BaseFactory.eINSTANCE.createFolder();
 		folder1.setId("Folder-1");
@@ -529,9 +535,9 @@ public class DummyDataService {
 		testFolder.getContents().add(folder1);
 		testFolder.getContents().add(folder2);
 		testFolder.getContents().add(folder3);
-		testFolder.getContents().add(libfolder1);
-		testFolder.getContents().add(libfolder2);
-		testFolder.getContents().add(libfolder3);
+		// testFolder.getContents().add(libfolder1);
+		// testFolder.getContents().add(libfolder2);
+		// testFolder.getContents().add(libfolder3);
 	}
 
 	private void loadMiniTrainingTestData(Folder testFolder) {

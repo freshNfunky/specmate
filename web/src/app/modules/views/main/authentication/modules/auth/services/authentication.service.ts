@@ -77,8 +77,8 @@ export class AuthenticationService {
     }
 
     public async authenticate(user: User): Promise<UserToken> {
+        const wasAuthenticated: boolean = this.isAuthenticated;
         try {
-            const wasAuthenticated: boolean = this.isAuthenticated;
             this.token = await this.serviceInterface.authenticate(user);
             if (this.isAuthenticated) {
                 if (wasAuthenticated !== this.isAuthenticated) {
@@ -91,6 +91,10 @@ export class AuthenticationService {
             }
         } catch (e) {
             this.authFailed = true;
+            this.clearToken();
+            if (wasAuthenticated) {
+                this.authChanged.emit(false);
+            }
         }
     }
 

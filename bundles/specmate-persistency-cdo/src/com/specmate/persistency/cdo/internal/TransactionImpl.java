@@ -78,17 +78,22 @@ public class TransactionImpl extends ViewImpl implements ITransaction {
 		logService.log(LogService.LOG_DEBUG, "Transaction closed: " + transaction.getViewID());
 	}
 
-	private <T> void commit(T object) throws SpecmateException {
+	private void checkCommitPrecondition() throws SpecmateException {
 		if (!isActive()) {
 			throw new SpecmateInternalException(ErrorCode.PERSISTENCY,
 					"Attempt to commit but transaction is not active.");
 		}
-		if (!isDirty()) {
-			return;
-		}
+
 		if (statusService != null && statusService.getCurrentStatus().isReadOnly()) {
 			throw new SpecmateInternalException(ErrorCode.PERSISTENCY, "Attempt to commit when in read-only mode.");
 		}
+	}
+
+	private <T> void commit(T object) throws SpecmateException {
+		if (!isDirty()) {
+			return;
+		}
+		checkCommitPrecondition();
 		try {
 			List<CDOIDAndVersion> detachedObjects;
 			try {
@@ -105,7 +110,12 @@ public class TransactionImpl extends ViewImpl implements ITransaction {
 			setMetadata(object, detachedObjects);
 			transaction.commit();
 		} catch (CommitException e) {
-			transaction.rollback();
+			try {
+				transaction.rollback();
+			} catch (Exception e2) {
+				logService.log(LogService.LOG_ERROR, "Error during commit and rollback. Reason: " + e2.getMessage(),
+						e2);
+			}
 			logService.log(LogService.LOG_ERROR, "Error during commit, transaction rolled back.", e);
 			throw new SpecmateInternalException(ErrorCode.PERSISTENCY, "Error during commit, transaction rolled back.",
 					e);
@@ -114,18 +124,18 @@ public class TransactionImpl extends ViewImpl implements ITransaction {
 
 	@Override
 	public <T> T doAndCommit(IChange<T> change) throws SpecmateException {
+		checkCommitPrecondition();
+
 		int maxAttempts = 10;
 		boolean success = false;
 		int attempts = 1;
 		T result = null;
 
 		while (!success && attempts <= maxAttempts) {
-
 			result = change.doChange();
-
 			try {
 				commit(result);
-			} catch (SpecmateInternalException e) {
+			} catch (SpecmateException e) {
 				try {
 					Thread.sleep(attempts * 50);
 				} catch (InterruptedException ie) {
@@ -262,9 +272,13 @@ public class TransactionImpl extends ViewImpl implements ITransaction {
 	}
 
 	@Override
-	public void rollback() {
-		transaction.rollback();
-
+	public void rollback() throws SpecmateException {
+		try {
+			transaction.rollback();
+		} catch (Exception e) {
+			throw new SpecmateInternalException(ErrorCode.PERSISTENCY,
+					"Error during rollback. Reason: " + e.getMessage(), e);
+		}
 	}
 
 	@Override

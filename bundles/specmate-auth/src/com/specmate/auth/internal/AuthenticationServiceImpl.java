@@ -31,15 +31,18 @@ public class AuthenticationServiceImpl implements IAuthenticationService {
 		if (!authenticated) {
 			throw new SpecmateAuthorizationException("User " + username + " not authenticated.");
 		}
-
+		// throw new SpecmateAuthorizationException("skldjf");
 		AccessRights targetRights = retrieveTargetAccessRights(project, username, password);
-
-		return sessionService.create(AccessRights.ALL, targetRights, username, projectname);
+		try {
+			return sessionService.create(AccessRights.ALL, targetRights, username, projectname);
+		} catch (SpecmateException e) {
+			throw new SpecmateAuthorizationException("User session could not be created.");
+		}
 	}
 
 	/**
-	 * Use this method only in tests to create a session that authorizes requests to
-	 * all resources.
+	 * Use this method only in tests to create a session that authorizes
+	 * requests to all resources.
 	 */
 	@Override
 	public UserSession authenticate(String username, String password) {

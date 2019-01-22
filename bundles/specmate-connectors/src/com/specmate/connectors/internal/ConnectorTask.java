@@ -74,8 +74,12 @@ public class ConnectorTask extends SchedulerTask {
 
 				}
 			} catch (SpecmateException e) {
-				logService.log(LogService.LOG_ERROR, e.getMessage());
-				transaction.rollback();
+				logService.log(LogService.LOG_ERROR, "Error while synching requiremens. Reason " + e.getMessage());
+				try {
+					transaction.rollback();
+				} catch (SpecmateException e2) {
+					logService.log(LogService.LOG_ERROR, "Error while trying to roll-back. Reason: " + e2.getMessage());
+				}
 			}
 
 		}

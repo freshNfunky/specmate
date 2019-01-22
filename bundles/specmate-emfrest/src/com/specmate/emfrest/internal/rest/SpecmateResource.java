@@ -189,7 +189,7 @@ public abstract class SpecmateResource {
 						return result.getResponse();
 					}
 				} catch (SpecmateValidationException e) {
-					transaction.rollback();
+					tryRollbackAndLog();
 
 					logService.log(LogService.LOG_ERROR, e.getMessage());
 
@@ -202,7 +202,7 @@ public abstract class SpecmateResource {
 
 					return Response.status(status).entity(pd).build();
 				} catch (SpecmateAuthorizationException e) {
-					transaction.rollback();
+					tryRollbackAndLog();
 					logService.log(LogService.LOG_ERROR, e.getMessage());
 
 					Status status = Status.UNAUTHORIZED;
@@ -214,7 +214,7 @@ public abstract class SpecmateResource {
 					return Response.status(status).entity(pd).build();
 
 				} catch (SpecmateException e) {
-					transaction.rollback();
+					tryRollbackAndLog();
 					logService.log(LogService.LOG_ERROR, e.getMessage());
 
 					Status status = Status.INTERNAL_SERVER_ERROR;
@@ -242,6 +242,14 @@ public abstract class SpecmateResource {
 		pd.setDetail(serviceName);
 
 		return Response.status(status).entity(pd).build();
+	}
+
+	private void tryRollbackAndLog() {
+		try {
+			transaction.rollback();
+		} catch (SpecmateException e) {
+			logService.log(LogService.LOG_ERROR, "Error while rolling-back. Reason: " + e.getMessage());
+		}
 	}
 
 	@Path("/{id:[^_][^/]*(?=/)}")

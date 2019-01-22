@@ -21,7 +21,6 @@ import com.specmate.common.exception.SpecmateInternalException;
 import com.specmate.model.administration.ErrorCode;
 import com.specmate.model.base.IContainer;
 import com.specmate.model.base.IContentElement;
-import com.specmate.model.base.ISpecmateModelObject;
 import com.specmate.model.support.util.SpecmateEcoreUtil;
 import com.specmate.rest.RestResult;
 
@@ -40,7 +39,15 @@ public class CrudUtil {
 			EObject eObjectParent = (EObject) parent;
 			EStructuralFeature containmentFeature = eObjectParent.eClass().getEStructuralFeature(CONTENTS);
 			if (containmentFeature.isMany()) {
-				((EList<Object>) eObjectParent.eGet(containmentFeature)).add(toAdd);
+				try {
+					EList<Object> eList = (EList<Object>) eObjectParent.eGet(containmentFeature);
+					if (!eList.contains(toAdd)) { // would lead to an exception
+						eList.add(toAdd);
+					}
+				} catch (Exception e) {
+					throw new SpecmateInternalException(ErrorCode.INTERNAL_PROBLEM,
+							"Could not add object to parent. Reason: " + e.getMessage());
+				}
 			} else {
 				eObjectParent.eSet(containmentFeature, toAdd);
 			}
@@ -68,8 +75,8 @@ public class CrudUtil {
 	 * @param target
 	 *            The target object that shall be duplicated
 	 * @param childrenCopyBlackList
-	 *            A list of element types. Child-Elements of target are only copied
-	 *            if the are of a type that is not on the blacklist
+	 *            A list of element types. Child-Elements of target are only
+	 *            copied if the are of a type that is not on the blacklist
 	 * @return
 	 * @throws SpecmateException
 	 */
@@ -129,14 +136,14 @@ public class CrudUtil {
 	}
 
 	/**
-	 * Checks whether the update is either detached from any project or is part of
-	 * the same project than the object represented by this resource.
+	 * Checks whether the update is either detached from any project or is part
+	 * of the same project than the object represented by this resource.
 	 *
 	 * @param update
 	 *            The update object for which to check the project
 	 * @param recurse
-	 *            If true, also checks the projects for objects referenced by the
-	 *            update
+	 *            If true, also checks the projects for objects referenced by
+	 *            the update
 	 * @return
 	 */
 	private static boolean isProjectModificationRequestAuthorized(Object resourceObject, EObject update,

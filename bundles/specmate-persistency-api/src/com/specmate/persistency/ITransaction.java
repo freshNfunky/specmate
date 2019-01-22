@@ -10,8 +10,8 @@ import com.specmate.common.exception.SpecmateException;
  */
 public interface ITransaction extends IView {
 	/*
-	 * A comment can consist of several records. Each record consists of one or more
-	 * fields. Each field consists of one or more data items.
+	 * A comment can consist of several records. Each record consists of one or
+	 * more fields. Each field consists of one or more data items.
 	 *
 	 * Example with the following records (username;deleted objects;comment):
 	 * michael;Model1|CEGModel,Library Folder|Folder;deleted empty models
@@ -20,8 +20,12 @@ public interface ITransaction extends IView {
 	public static final String COMMENT_DATA_SEPARATOR = "|";
 	public static final String COMMENT_RECORD_SEPARATOR = ";";
 
-	/** Rolls back changes made in this transaction since the last commit */
-	public void rollback();
+	/**
+	 * Rolls back changes made in this transaction since the last commit
+	 * 
+	 * @throws SpecmateException
+	 */
+	public void rollback() throws SpecmateException;
 
 	/** Closes the transaction. */
 	@Override
